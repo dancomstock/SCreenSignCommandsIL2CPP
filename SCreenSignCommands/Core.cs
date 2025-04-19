@@ -16,7 +16,7 @@ namespace SCreenSignCommandsIL2CPP
     {
         public Queue<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem> labelledSurfaceItems;
         public SignCommands signCommands;
-        public Dictionary<int, string> runningLabels;
+        public Dictionary<int, bool> runningLabels;
         public float waittime = 1f;
         public float innerwaittime = 0.1f;
 
@@ -24,11 +24,11 @@ namespace SCreenSignCommandsIL2CPP
         {
             this.labelledSurfaceItems = new Queue<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem>();
             this.signCommands = new SignCommands();
-            this.runningLabels = new Dictionary<int, string>();
+            this.runningLabels = new Dictionary<int, bool>();
             LoggerInstance.Msg("Initialized.");
         }
 
-        public void register_command(string name, string description, Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, IEnumerator> command_method)
+        public void register_command(string name, string description, Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, Task> command_method)
         {
             this.signCommands.register_command(name, description, command_method);
         }
@@ -58,16 +58,26 @@ namespace SCreenSignCommandsIL2CPP
 
             public void RunCommands()
             {
-                object routine = MelonCoroutines.Start(RunCommandsRoutine());
+                //object routine = MelonCoroutines.Start(RunCommandsRoutine());
+                var doit = Task.Run(() => (RunCommandsRoutine()));
             }
 
-            public IEnumerator RunCommandsRoutine()
+            //public IEnumerator waitForLoad()
+            //{
+            //    while (PlayerSingleton<AppsCanvas>.Instance == null)
+            //    {
+            //        yield return new WaitForSeconds(Melon<Core>.Instance.waittime);
+            //    }
+            //}
+
+            public async Task RunCommandsRoutine()
             {
                 
                 while (PlayerSingleton<AppsCanvas>.Instance == null)
                 {
                     //yield return new WaitForSeconds(Melon<Core>.Instance.waittime);
-                    yield return null;
+                    await Task.Delay(1000);
+                    //yield return null;
                 }
 
                 var queue = Melon<Core>.Instance.labelledSurfaceItems;
@@ -79,7 +89,7 @@ namespace SCreenSignCommandsIL2CPP
                         //try
                         //{
                         var next = queue.Dequeue();
-                        Melon<Core>.Instance.runningLabels[next.GetInstanceID()] = "locked";
+                        //Melon<Core>.Instance.runningLabels[next.GetInstanceID()] = "locked";
                         Melon<Core>.Instance.signCommands.run_commands(next);
                         //}
                         //catch (System.Exception ex)
@@ -88,7 +98,8 @@ namespace SCreenSignCommandsIL2CPP
                         //}
 
                     }
-                    yield return new WaitForSeconds(Melon<Core>.Instance.waittime);
+                    //yield return new WaitForSeconds(Melon<Core>.Instance.waittime);
+                    await Task.Delay(1000);
                     //yield return null;
                 }
             }
@@ -99,15 +110,31 @@ namespace SCreenSignCommandsIL2CPP
     {
         public string name;
         public string description;
-        public Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, IEnumerator> _command_function;
+        public Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, Task> _command_function;
 
 
-        public IEnumerator run(Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem instance)
+        public async Task run(Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem instance)
         {
-            yield return this._command_function(instance);
+            try
+            {
+                Melon<Core>.Instance.runningLabels[instance.GetInstanceID()] = true;
+                Melon<Core>.Logger.Msg($"{instance.GetInstanceID()} locked");
+                await _command_function(instance);
+            }
+            catch (System.Exception ex)
+            {
+                Melon<Core>.Logger.Msg($"error: {ex}");
+            }
+            finally
+            {
+                Melon<Core>.Instance.runningLabels[instance.GetInstanceID()] = false;
+                Melon<Core>.Logger.Msg($"{instance.GetInstanceID()} unlocked");
+            }
+
+            
         }
 
-        public SignCommand(string name, string description, Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, IEnumerator> command_function)
+        public SignCommand(string name, string description, Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, Task> command_function)
         {
             this.name = name;
             this.description = description;
@@ -161,15 +188,17 @@ namespace SCreenSignCommandsIL2CPP
             string command_name = instance.Message.Split(' ').FirstOrDefault();
             var command = this.commands.FirstOrDefault(i => i.name == command_name);
             if (command != null)
-            { 
+            {
                 //IEnumerator result = command.run(instance);
-                MelonCoroutines.Start(command.run(instance));
+                //async Task result = command.run(instance);
+                SignCommand command_instance = new SignCommand(command.name, command.description, command._command_function);
+                var doit = Task.Run(() => command_instance.run(instance));
                 //instance.Label.text = result;
             }
             return "";
         }
 
-        public void register_command(string name, string description, Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, IEnumerator> command_method)
+        public void register_command(string name, string description, Func<Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem, Task> command_method)
         {
             commands.Add(new SignCommand(name, description, command_method));
         }
@@ -185,8 +214,11 @@ namespace SCreenSignCommandsIL2CPP
     {
         static void Postfix(Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem __instance)
         {
-            Melon<Core>.Instance.labelledSurfaceItems.Enqueue(__instance);
-            Melon<Core>.Logger.Msg($"{__instance} added");
+            if (Melon<Core>.Instance.runningLabels.GetValueOrDefault(__instance.GetInstanceID(), false) != true)
+            {
+                Melon<Core>.Instance.labelledSurfaceItems.Enqueue(__instance);
+                Melon<Core>.Logger.Msg($"{__instance} added");
+            }
         }
     }
 
@@ -196,7 +228,7 @@ namespace SCreenSignCommandsIL2CPP
         static void Postfix(Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem __instance)
         {
             //__instance.GetInstanceID();
-            if(Melon<Core>.Instance.runningLabels.GetValueOrDefault(__instance.GetInstanceID(), "unlocked") != "locked")
+            if(Melon<Core>.Instance.runningLabels.GetValueOrDefault(__instance.GetInstanceID(), false) != true)
             {
                 Melon<Core>.Instance.labelledSurfaceItems.Enqueue(__instance);
                 Melon<Core>.Logger.Msg($"{__instance} added");
