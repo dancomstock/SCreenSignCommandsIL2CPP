@@ -73,11 +73,11 @@ namespace SCreenSignCommandsIL2CPP
                 var queue = Melon<Core>.Instance.labelledSurfaceItems;
                 while (true)
                 {
-                    Melon<Core>.Logger.Msg($"Count = {queue.Count}");
+                    //Melon<Core>.Logger.Msg($"Count = {queue.Count}");
                     if (queue.Count > 0)
                     {
                         var next = queue.Dequeue();
-                        Melon<Core>.Logger.Msg($"ID = {next.GetInstanceID()}");
+                        Melon<Core>.Logger.Msg($"Next ID = {next.GetInstanceID()}");
                         
                         Melon<Core>.Instance.signCommands.run_commands(next);
                     }
@@ -112,6 +112,8 @@ namespace SCreenSignCommandsIL2CPP
         public static Dictionary<string, string> getArgs(Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem instance)
         {
             string message = instance.Message;
+            message.Replace("\n", "");
+            message.Replace("\r", "");
             string command_name = message.Split(' ').FirstOrDefault();
             string remaining_text = removeFirstInstance(message, $"{command_name}");
             string pattern = @"(?<=\s)(\w+=(?:""(?:(?<=\\)""|[^""])+""|[\S]+))";
@@ -119,9 +121,10 @@ namespace SCreenSignCommandsIL2CPP
             Dictionary<string, string> args = new Dictionary<string, string>();
             foreach (Match m in Regex.Matches(message, pattern, options))
             {
-                Melon<Core>.Logger.Msg("'{0}' found at index {1}.", m.Value, m.Index);
+                //Melon<Core>.Logger.Msg("'{0}' found at index {1}.", m.Value, m.Index);
                 remaining_text = removeFirstInstance(remaining_text, $"{m.Value}");
                 string[] kv = m.Value.Split("=", 2);
+                kv[1] = kv[1].Trim('"');
                 args.Add(kv[0], kv[1]);
                 Melon<Core>.Logger.Msg("Key: {0}' Value: {1}.", kv[0], kv[1]);
             }
@@ -151,8 +154,7 @@ namespace SCreenSignCommandsIL2CPP
 
         public string run_commands(Il2CppScheduleOne.EntityFramework.LabelledSurfaceItem instance)
         {
-            Melon<Core>.Logger.Msg($"In run commands with {instance.Message}");
-            Melon<Core>.Logger.Msg($"Possible command {this.commands[0].name}");
+            //Melon<Core>.Logger.Msg($"In run commands with {instance.Message}");
             string command_name = instance.Message.Split(' ').FirstOrDefault();
             var command = this.commands.FirstOrDefault(i => i.name == command_name);
             if (command != null)
